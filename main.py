@@ -1,7 +1,8 @@
 import json
 import os
 import urllib.request
-from typing import List
+from enum import Enum
+from typing import List, Optional
 
 import cv2
 import numpy as np
@@ -45,7 +46,7 @@ def get_train_info_for_ids(ids: List[int]):
     return json.loads(response.read().decode('utf-8'))
 
 
-def make_transparent(image_path: str):
+def make_transparent(image_path: str) -> Image:
     img = cv2.imread(image_path)
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     img_rgba = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
@@ -75,7 +76,35 @@ def make_transparent(image_path: str):
     return output_image
 
 
-def download_img(url: str, name: str):
+class Part(Enum):
+    HEAD = 0
+    MIDDLE = 1
+    TAIL = 2
+
+
+def crop_to_square(img: Image, part: Part) -> Image:
+    width, height = img.size
+    new_size = min(width, height)
+    match part:
+        case Part.HEAD:
+            left = 0
+            right = new_size
+        case Part.MIDDLE:
+            left = (width - new_size) / 2
+            right = (width + new_size) / 2
+        case Part.TAIL:
+            left = width - new_size
+            right = width
+        case _:
+            raise NotImplementedError()
+    top = (height - new_size) / 2
+    bottom = (height + new_size) / 2
+
+    img_cropped = img.crop((left, top, right, bottom))
+    return img_cropped
+
+
+def download_img(url: str, name: str, part: Optional[Part]):
     response = requests.get(url)
     if response.status_code == 200:
         # Save the image to the specified path
@@ -88,6 +117,18 @@ def download_img(url: str, name: str):
             pass
         else:
             img = make_transparent(location)
+        # Crop image
+        if part is None:
+            img.save(location[:-4] + "-full.png", 'png')
+            old_img = img.copy()
+            img = crop_to_square(old_img, Part.HEAD)
+            img.save(location[:-4] + ".png", 'png')
+            img = crop_to_square(old_img, Part.MIDDLE)
+            img.save(location[:-4] + "-bak.png", 'png')
+            img = crop_to_square(old_img, Part.TAIL)
+            img.save(location[:-4] + "'.png", 'png')
+        else:
+            img = crop_to_square(img, part)
             img.save(location, 'png')
     else:
         print(f"Failed to download {url}")
@@ -95,6 +136,7 @@ def download_img(url: str, name: str):
 
 if __name__ == '__main__':
     # Get all vehicles
+    print("Getting all vehicles...")
     vehicles = get_all_vehicles()
     # Collect a train id for each train type
     vehicle_types = dict()
@@ -104,18 +146,23 @@ if __name__ == '__main__':
             if v_type not in vehicle_types:
                 vehicle_types[v_type] = trip_id
     # Get full information for those trains
+    print("Getting vehicle information...")
     vehicles = get_train_info_for_ids(list(vehicle_types.values()))
     # Download all images
+    print("Downloading images...")
     visited = set()
     for vehicle in vehicles:
         for deel in vehicle['materieeldelen']:
             deel_type = deel['type']
             if deel_type not in visited:
-                visited.add(deel_type)
                 bakken = deel['bakken']
                 try:
-                    download_img(bakken[0]['afbeelding']['url'], f"{deel_type}.png")
-                    download_img(bakken[1]['afbeelding']['url'], f"{deel_type}-bak.png")
-                    download_img(bakken[-1]['afbeelding']['url'], f"{deel_type}'.png")
+                    if len(bakken) == 0:
+                        download_img(deel['afbeelding'], f"{deel_type}.png", None)
+                    else:
+                        download_img(bakken[0]['afbeelding']['url'], f"{deel_type}.png", Part.HEAD)
+                        download_img(bakken[1]['afbeelding']['url'], f"{deel_type}-bak.png", Part.MIDDLE)
+                        download_img(bakken[-1]['afbeelding']['url'], f"{deel_type}'.png", Part.TAIL)
+                    visited.add(deel_type)
                 except (IndexError, KeyError):
                     pass
