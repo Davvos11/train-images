@@ -10,6 +10,9 @@ import requests
 from PIL import Image
 
 KEY = os.getenv('NS_KEY')
+if not KEY:
+    print("NS_KEY environment variable not set")
+    exit(1)
 
 
 def get_all_vehicles():
