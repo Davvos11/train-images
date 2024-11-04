@@ -3,6 +3,7 @@ import os
 import urllib.request
 from enum import Enum
 from typing import List, Optional
+from urllib.error import HTTPError
 
 import cv2
 import numpy as np
@@ -27,7 +28,12 @@ def get_all_vehicles():
     req = urllib.request.Request(url, headers=hdr)
 
     req.get_method = lambda: 'GET'
-    response = urllib.request.urlopen(req)
+    try:
+        response = urllib.request.urlopen(req)
+    except HTTPError as e:
+        print(f"Error {e.code} getting all vehicles: {e.reason}")
+        print(f"{e.read().decode()}")
+        exit(2)
 
     return json.loads(response.read().decode('utf-8'))
 
@@ -44,7 +50,13 @@ def get_train_info_for_ids(ids: List[int]):
     req = urllib.request.Request(url, headers=hdr)
 
     req.get_method = lambda: 'GET'
-    response = urllib.request.urlopen(req)
+    try:
+        response = urllib.request.urlopen(req)
+    except HTTPError as e:
+        print(f"Error {e.code} getting train info: {e.reason}")
+        print(f"{e.read().decode()}")
+        exit(2)
+
 
     return json.loads(response.read().decode('utf-8'))
 
